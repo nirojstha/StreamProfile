@@ -1,0 +1,383 @@
+%%setting up the workspace 
+
+addpath(genpath('C:\Users\nrj89507\Downloads\topotoolbox-master’)) 
+
+ 
+
+%% Load a DEM 
+
+DEM = GRIDobj(‘add path’); 
+
+ 
+
+%%Fill, Flow Direction and Flow accumulation 
+
+DEM_FIL = fillsinks(DEM); 
+
+DEM_FD = FLOWobj(DEM_FIL,'preprocess','carve'); 
+
+DEM_FAC = flowacc(DEM_FD); 
+
+ 
+
+%%Reference the dem 
+
+dem_resolution = DEM.refmat(2,1); 
+
+ 
+
+%%Threshold to extract streams 
+
+area_threshold = 1e6; %1e6=10 sq. km 
+
+ 
+
+% convert area threshold to meters specified above 
+
+minApix = area_threshold/(dem_resolution*dem_resolution); 
+
+minApix = ceil(minApix);   
+
+ 
+
+% masks flow accum grid (above threshold) 
+
+DEM_FAC_w = DEM_FAC > minApix;   
+
+ 
+
+%%extract river 
+
+DEM_STR = STREAMobj(DEM_FD, DEM_FAC_w; 
+
+plot(DEM_STR); 
+
+ 
+
+DEM_STR = binarize(DEM_STR); 
+
+ 
+
+%%calculate stream order 
+
+DEM_STRo = streamorder(DEM_STR) 
+
+ 
+
+%%extract only the largest connected river network in the basin 
+
+DEM_STR = klargestconncomps(DEM_STR,1); 
+
+ 
+
+ 
+
+%%conditioning the DEM (Smoothing the stream network using crs algorithm before extracting river long profile 
+
+DEM = ConditionDEM(DEM,DEM_FD,DEM_STR,'crs'); 
+
+ 
+
+%%Figure long profile 
+
+plotdz(DEM_STR, DEM, 'color', 'k', 'linewidth', 0.5) %%plot tributaries 
+
+hold on 
+
+plotdz(trunk(DEM_STR),DEM, 'color', 'b', 'linewidth', 4) %%plot main trunk 
+
+hold off 
+
+title(“River Long Profile”) 
+
+ 
+
+%% calculate slope and area from DEM 
+
+% set a minimum gradient(here min gradient = 0.005)(no place in DEM has a slope of 0) 
+
+min_str_gradient = 5e-3; 
+
+DEM_mg = imposemin(DEM_FD, DEM, min_str_gradient); 
+
+DEM_slope = gradient(DEM_STRo,DEM_mg,'unit','tangent'); 
+
+DEM_area = DEM_FAC.Z(DEM_STRo.IXgrid).*... 
+
+    (DEM_FAC.cellsize).^2; 
+
+DEM_slope_5eminus3 = ... 
+
+    find(DEM_slope < 4e-3); 
+
+DEM_slope(DEM_slope_5eminus3) = []; 
+
+DEM_area(DEM_slope_5eminus3) = []; 
+
+ 
+
+%%use slopearea function 
+
+DEM_slopearea = ... 
+
+    slopearea(DEM_STRo, DEM_mg,... 
+
+    DEM_FAC, ... 
+
+    'areabinlocs', 'median', ... 
+
+    'gradaggfun', 'median', ... 
+
+    'streamgradient', 'robust', ... 
+
+    'mingradient', 1e-2, ... 
+
+    'plot', false, ... 
+
+    'areabins', 50); 
+
+ 
+
+%% Figures  
+
+%%Slope Area Plot 
+
+ 
+
+subplot(1,2,1) 
+
+loglog(DEM_area, DEM_slope, ... 
+
+    '.', 'color', [0.8 0.8 0.8]) 
+
+xlabel('Drainage Area [m^2]') 
+
+ylabel('Slope [m/m]') 
+
+grid on 
+
+hold on 
+
+loglog(DEM_slopearea.a, ... 
+
+    DEM_slopearea.g, ... 
+
+    'ks', 'markersize' ,5) 
+
+aeval = logspace(log10(min(DEM_slopearea.a)),log10(max(DEM_slopearea.a)),10); 
+
+geval = DEM_slopearea.ks(1)*aeval.^DEM_slopearea.theta; 
+
+loglog(aeval, geval, 'k-', 'linewidth', 2) 
+
+title([DEM_name,',',' \theta=',num2str(DEM_slopearea.theta,2),' and ks=',num2str(DEM_slopearea.ks,3)]) %%Slope Area Plot without normalizing the Steepness indices 
+
+ 
+
+  
+
+subplot(1,2,2) 
+
+loglog(DEM_area, ... 
+
+    DEM_slope, '.', ... 
+
+    'color', [0.8 0.8 0.8]) 
+
+xlabel('Drainage Area [m^2]') 
+
+ylabel('Slope [m/m]') 
+
+grid on 
+
+hold on 
+
+DEM_slopearea = ... 
+
+    slopearea(DEM_STRo, DEM_mg,... 
+
+    DEM_FAC, ... 
+
+    'areabinlocs', 'median', ... 
+
+    'gradaggfun', 'median', ... 
+
+    'streamgradient', 'robust', ... 
+
+    'hist2', false, ... 
+
+    'mingradient', 1e-2, ... 
+
+    'plot', false, ... 
+
+    'areabins', 50, ... 
+
+    'theta', 0.45); 
+
+loglog(DEM_slopearea.a, ... 
+
+    DEM_slopearea.g, ... 
+
+    'ks', 'markersize' ,5) 
+
+  
+
+aeval = logspace(log10(min(DEM_slopearea.a)),log10(max(DEM_slopearea.a)),10); 
+
+geval = DEM_slopearea.ks(1)*aeval.^DEM_slopearea.theta; 
+
+loglog(aeval, geval, 'k-', 'linewidth', 2) 
+
+title([‘DEM_name’,' \theta=',num2str(DEM_slopearea.theta,2),' and ksn=',num2str(DEM_slopearea.ks,3)]) %%Slope Area Plot with normalizing the Steepness indices 
+
+ 
+
+%% Generate a map of steepness indices 
+
+DEM_slopearea = ... 
+
+    slopearea(DEM_STRo, DEM_mg,... 
+
+    DEM_FAC, ... 
+
+    'areabinlocs', 'median', ... 
+
+    'gradaggfun', 'median', ... 
+
+    'streamgradient', 'robust', ... 
+
+    'mingradient', 1e-2, ... 
+
+    'plot', false, ... 
+
+    'areabins', 50); 
+
+  
+
+g   = gradient(DEM_STRo, DEM); 
+
+a   = getnal(DEM_STRo, DEM_FAC)*DEM_FAC.cellsize^2; 
+
+DEM_ksn = g./(a.^(-0.45)); 
+
+  
+
+DEM_ksna = aggregate(DEM_STRo,... 
+
+    DEM_ksn,'seglength',5000); %for aggregating the ksn value 5km stream length was used 
+
+  
+
+%repeat for trunk stream only (for separate plot): 
+
+g_trunk   = gradient(trunk(DEM_STR), DEM); 
+
+a_trunk   = getnal(trunk(DEM_STR), DEM_FAC)*DEM_FAC.cellsize^2; 
+
+DEM_ksn_trunk = g_trunk./(a_trunk.^(-0.45)); 
+
+DEM_ksna_trunk = aggregate(trunk(DEM_STR),... 
+
+    DEM_ksn_trunk,'seglength',5000); 
+
+ 
+
+%export the trunk river to shapefile 
+
+shapename = strcat('path\trunkksn.shp') 
+
+ 
+
+MST = STREAMobj2mapstruct(trunk(DEM_STR), ‘seglength',5000,… 
+
+'attributes',{'ksn' DEM_ksna @mean}); 
+
+ 
+
+shapewrite(MST,shapename); 
+
+ 
+
+%%calculate chi indices 
+
+c = chitransform(DEM_STR, DEM_FAC, 'mn', 0.45); 
+
+ 
+
+%export to shapefile 
+
+shapename = strcat(‘path\KsnChi_rivers.shp') 
+
+ 
+
+MST = STREAMobj2mapstruct(DEM_STRo,'seglength',5000,... 
+
+                  'attributes',{'ksn' DEM_ksn @mean 'flowacc' a @mean 'gradient' g @mean 'streamord' So @max 'chi' c @ mean}); 
+
+shapewrite(MST,shapename) 
+
+ 
+
+%% Chiplot 
+
+c = chiplot(DEM_STR,DEM,... 
+
+    DEM_FAC,... 
+
+    'mnplot', false, ... 
+
+    'fitto', 'ts', ... 
+
+    'trunkstream', trunk(DEM_STR),... 
+
+    'a0', 5000); 
+
+ title(‘DEM_name’); 
+
+ 
+
+%Find Knickpoints 
+
+[~,kp] = knickpointfinder(DEM_STR,DEM,'tol',30,... 
+
+         'split',true,'verbose',false); %30 m tolerance threshold was used 
+
+P = PPS(S,'pp',kp.IXgrid,'z', DEM); 
+
+dz = kp.dz; 
+
+plot(P) 
+
+ 
+
+%% Generating SHP Knickpoints  
+
+knick = struct(); 
+
+for i=1:numel(kp.x) 
+
+knick(i).Geometry = 'Point'; 
+
+knick(i).id = i; 
+
+knick(i).X = kp.x(i); 
+
+knick(i).Y = kp.y(i); 
+
+knick(i).distan = kp.distance(i); 
+
+knick(i).z = kp.z(i); 
+
+knick(i).IXgrid = kp.IXgrid(i); 
+
+knick(i).order = kp.order(i); 
+
+knick(i).dz = kp.dz(i); 
+
+end 
+
+%export knickpoints to shape files 
+
+shapename = strcat(‘path\Knickpoints.shp') 
+
+shapewrite(knick,shapename) 
