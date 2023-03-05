@@ -1,4 +1,5 @@
 #Stream Profile Model
+
 This repository contains MATLAB code for a stream profile model that I used for my thesis. This code is modified version of codes originally developed by Dr. Wolfgang (https://topotoolbox.wordpress.com/). The model is designed to simulate the evolution of a stream channel over time, accounting for various physical processes such as erosion, sediment transport, and deposition.
 
 ##Getting Started
